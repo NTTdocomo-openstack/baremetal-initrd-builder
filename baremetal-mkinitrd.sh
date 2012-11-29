@@ -41,13 +41,14 @@ function fullpath() {
 DIR=`dirname "$0"`
 INIT="$DIR/scripts/init"
 FUNCTIONS_D="$DIR/scripts/d"
-LIB_UDEV="$DIR/udev"
 
 DEST=`fullpath "$1"`
 KERNEL_VERSION=$2
 MODULE_ROOT=${3:-""}
+LIB_UDEV_ROOT=${4:-""}
 MODULE_DIR=$MODULE_ROOT/lib/modules/$KERNEL_VERSION
 FIRMWARE_DIR=$MODULE_ROOT/lib/firmware
+LIB_UDEV=$LIB_UDEV_ROOT/lib/udev
 
 if [ ! -d "$MODULE_DIR" ]; then
 	echo "ERROR: kernel module directory not found at $MODULE_DIR"
@@ -71,8 +72,11 @@ ln -s lib "$INITRD_DIR/lib64"
 mkdir -p "$INITRD_DIR/lib/modules"
 mkdir -p "$INITRD_DIR/etc"
 mkdir -p "$INITRD_DIR/etc/udev"
+mkdir -p "$INITRD_DIR/lib/udev/rules.d"
 
-cp -a "$LIB_UDEV" "$INITRD_DIR/lib/udev"
+cp -a "$LIB_UDEV/rules.d/50-firmware.rules" "$INITRD_DIR/lib/udev/rules.d"
+cp -a "$LIB_UDEV/rules.d/80-drivers.rules" "$INITRD_DIR/lib/udev/rules.d"
+cp -a "$LIB_UDEV/firmware" "$INITRD_DIR/lib/udev"
 
 mkdir -p "$INITRD_DIR/etc/modprobe.d"
 echo "blacklist evbug" > "$INITRD_DIR/etc/modprobe.d/blacklist.conf"
@@ -85,7 +89,7 @@ udev_log="no"
 EOF
 
 libs=
-for i in "$BUSYBOX" bash modprobe udevd udevadm wget tgtd tgtadm reboot shutdown; do
+for i in "$BUSYBOX" "$LIB_UDEV/firmware" bash modprobe udevd udevadm wget tgtd tgtadm reboot shutdown; do
 	if "$BUSYBOX" --list | grep "^$i\$" >/dev/null; then
 		continue
 	fi
