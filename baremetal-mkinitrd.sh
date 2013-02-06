@@ -88,7 +88,34 @@ udev_rules="/lib/udev/rules.d"
 udev_log="no"
 EOF
 
-libs=
+function copy_link_so() {
+  local name path 
+  local IFS="
+"
+  ldd_out=`ldd "$1"`
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  for i in `echo "$ldd_out" | sed -e 's/^\t*//'`; do
+    name=$( echo "$i" | awk -F '[ ]' '{print $1}')
+    path=$( echo "$i" | awk -F '[ ]' '$2 == "=>" {print $3}
+                                      $2 != "=>" {print $1}')
+    if [ -z "$path" ]; then
+      continue
+    fi
+    if [ "$name" != "${name#/}" ]; then
+      # name is an absolute path
+      if [ `dirname "$name"` != "/lib" ]; then
+        mkdir -p "$INITRD_DIR/"`dirname $name`
+        if ! [ -e "$INITRD_DIR/$name" ]; then
+          ln -s /lib/`basename $path` "$INITRD_DIR/$name"
+        fi
+      fi
+    fi
+    cp -Ln "$path" "$INITRD_DIR/lib"
+  done
+}
+
 for i in "$BUSYBOX" "$LIB_UDEV/firmware" bash modprobe udevd udevadm wget tgtd tgtadm reboot shutdown; do
 	if "$BUSYBOX" --list | grep "^$i\$" >/dev/null; then
 		continue
@@ -99,15 +126,8 @@ for i in "$BUSYBOX" "$LIB_UDEV/firmware" bash modprobe udevd udevadm wget tgtd t
 		exit 1
 	fi
 	cp -L "$path" "$INITRD_DIR/bin/"
-	if l=`ldd "$path"`; then
-		l=$( echo "$l" | grep '/' | tr "\t" " " )
-		l=$( echo "$l" | sed 's/^.* => \([^ ]*\).*$/\1/' )
-		l=$( echo "$l" | sed 's/^ *\([^ ]*\) *(0x[0-9a-f]*)/\1/' )
-		l=$( echo "$l" | tr " " "\n" )
-		libs=$( printf "%s\n%s\n" "$l" "$libs" | sort | uniq )
-	fi
+	copy_link_so "$path"
 done
-cp $libs "$INITRD_DIR/lib/"
 
 for i in $( "$BUSYBOX" --list ); do
 	if [ -f "$INITRD_DIR/bin/$i" ]; then
@@ -123,6 +143,7 @@ cp -a "$FIRMWARE_DIR" "$INITRD_DIR/lib/firmware"
 
 cp "$INIT" "$INITRD_DIR/init"
 chmod +x $INITRD_DIR/init
+rm -f "$INITRD_DIR/bin/init"
 for F in "$FUNCTIONS_D"/* ; do
 	cp "$F" "$INITRD_DIR"
 done
