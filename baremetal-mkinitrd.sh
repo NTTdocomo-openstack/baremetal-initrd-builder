@@ -68,7 +68,7 @@ echo "working in $INITRD_DIR"
 mkdir -p "$INITRD_DIR/bin"
 ln -s bin "$INITRD_DIR/sbin"
 mkdir -p "$INITRD_DIR/lib"
-ln -s lib "$INITRD_DIR/lib64"
+mkdir -p "$INITRD_DIR/lib64"
 mkdir -p "$INITRD_DIR/lib/modules"
 mkdir -p "$INITRD_DIR/etc"
 mkdir -p "$INITRD_DIR/etc/udev"
@@ -88,14 +88,18 @@ udev_rules="/lib/udev/rules.d"
 udev_log="no"
 EOF
 
+function starts_with() {
+  [ "$1" != "${1#$2}" ]
+}
+
 function copy_link_so() {
-  local name path 
-  local IFS="
-"
   ldd_out=`ldd "$1"`
   if [ $? -ne 0 ]; then
     return
   fi
+  local name path
+  local IFS="
+"
   for i in `echo "$ldd_out" | sed -e 's/^\t*//'`; do
     name=$( echo "$i" | awk -F '[ ]' '{print $1}')
     path=$( echo "$i" | awk -F '[ ]' '$2 == "=>" {print $3}
@@ -103,16 +107,19 @@ function copy_link_so() {
     if [ -z "$path" ]; then
       continue
     fi
-    if [ "$name" != "${name#/}" ]; then
-      # name is an absolute path
-      if [ `dirname "$name"` != "/lib" ]; then
-        mkdir -p "$INITRD_DIR/"`dirname $name`
-        if ! [ -e "$INITRD_DIR/$name" ]; then
-          ln -s /lib/`basename $path` "$INITRD_DIR/$name"
-        fi
+    if starts_with "$path" "/lib64"; then
+      dest=/lib64/`basename "$path"`
+    else
+      dest=/lib/`basename "$path"`
+    fi
+    cp -Ln "$path" "$INITRD_DIR/$dest"
+
+    if starts_with "$name" "/"; then
+      mkdir -p "$INITRD_DIR/"`dirname "$name"`
+      if ! [ -e "$INITRD_DIR/$name" -o -L "$INITRD_DIR/$name" ]; then
+        ln -s "$dest" "$INITRD_DIR/$name"
       fi
     fi
-    cp -Ln "$path" "$INITRD_DIR/lib"
   done
 }
 
